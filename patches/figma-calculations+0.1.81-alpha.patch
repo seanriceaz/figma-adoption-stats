@@ -1,0 +1,117 @@
+diff --git a/node_modules/figma-calculations/dist/index.d.ts b/node_modules/figma-calculations/dist/index.d.ts
+index 6ad811e..04b3871 100644
+--- a/node_modules/figma-calculations/dist/index.d.ts
++++ b/node_modules/figma-calculations/dist/index.d.ts
+@@ -20,7 +20,7 @@ export declare class FigmaCalculator extends FigmaDocumentParser {
+      * @param fileKey - {string}
+      * @returns
+      */
+-    fetchCloudDocument(fileKey: string): Promise<FigmaFile>;
++    fetchCloudDocument(fileKey: string, depth?: number): Promise<FigmaFile>;
+     getFilesForTeams: typeof getFigmaPagesForTeam;
+     /**
+      * Load all of the components from the library
+diff --git a/node_modules/figma-calculations/dist/index.js b/node_modules/figma-calculations/dist/index.js
+index 2bc2844..be8e8cf 100644
+--- a/node_modules/figma-calculations/dist/index.js
++++ b/node_modules/figma-calculations/dist/index.js
+@@ -64,9 +64,9 @@ class FigmaCalculator extends parser_1.default {
+      * @param fileKey - {string}
+      * @returns
+      */
+-    fetchCloudDocument(fileKey) {
++    fetchCloudDocument(fileKey, depth=0) {
+         return __awaiter(this, void 0, void 0, function* () {
+-            const file = yield webapi_1.FigmaAPIHelper.getFile(fileKey);
++            const file = yield webapi_1.FigmaAPIHelper.getFile(fileKey, depth);
+             const { document, styles, components, componentSets } = file;
+             // look at the children and fix the styles to use the actual style key instead of node key
+             FigmaCalculator.FindAll(document, (node) => {
+@@ -214,14 +214,21 @@ class FigmaCalculator extends parser_1.default {
+         const filteredLibraryNodes = [];
+         // get the component's real name
+         // check if a component has a mainComponent?
++        var problemInstances = 0;
+         const isLibraryComponent = (instanceNode) => {
+             // if it's a web file, then check the componentId else the mainCompponent property to get the key
+-            const componentKey = instanceNode.componentId || instanceNode.mainComponent.key;
+-            if (!componentKey) {
++            try {
++                const componentKey = instanceNode.componentId || instanceNode.mainComponent.key;
++                if (!componentKey) {
++                    return false;
++                }
++                if (componentMap[componentKey])
++                    return true;
++            } 
++            catch (e){
++                problemInstances++;
+                 return false;
+             }
+-            if (componentMap[componentKey])
+-                return true;
+             return false;
+         };
+         nodes.forEach((node) => {
+@@ -232,6 +239,9 @@ class FigmaCalculator extends parser_1.default {
+                 subNodes.forEach((n) => allLibraryNodes[node.id].layers.push(n.id));
+             }
+         });
++        if (problemInstances > 0){
++            console.log(`--${problemInstances} Problem component instances found in the above file`);
++        }
+         const nonLibraryNodes = nodes.filter((n) => {
+             for (const key in allLibraryNodes) {
+                 if (key === n.id || allLibraryNodes[key].layers.includes(n.id)) {
+diff --git a/node_modules/figma-calculations/dist/webapi.d.ts b/node_modules/figma-calculations/dist/webapi.d.ts
+index a1d0946..b61c7f7 100644
+--- a/node_modules/figma-calculations/dist/webapi.d.ts
++++ b/node_modules/figma-calculations/dist/webapi.d.ts
+@@ -1,4 +1,5 @@
+ import { FigmaFile, FigmaImages, FigmaPartialFile, FigmaTeamComponent, FigmaTeamStyle, FigmaProjectDetails, FigmaVersion, FigmaLocalVariable, FigmaLocalVariableCollection, FigmaPublishedVariable, FigmaPublishedVariableCollection } from "./models/figma";
++
+ /**
+  * Static class used to call the REST API
+  */
+@@ -7,7 +8,7 @@ export declare class FigmaAPIHelper {
+     static setToken(token: string): void;
+     static getTeamProjects(teamIds: string[]): Promise<FigmaProjectDetails[]>;
+     static getProjectFiles(projectId: string): Promise<FigmaPartialFile[]>;
+-    static getFile(fileKey: string): Promise<FigmaFile>;
++    static getFile(fileKey: string, depth?: number): Promise<FigmaFile>;
+     static getImages(fileKey: string, imageIds: string[], format: 'jpg' | 'png' | 'svg' | 'pdf'): Promise<FigmaImages>;
+     static getFileHistory(fileKey: string): Promise<FigmaVersion[]>;
+     static getTeamComponentSets(teamId: string): Promise<FigmaTeamComponent[]>;
+diff --git a/node_modules/figma-calculations/dist/webapi.js b/node_modules/figma-calculations/dist/webapi.js
+index faaae3f..90dfa8f 100644
+--- a/node_modules/figma-calculations/dist/webapi.js
++++ b/node_modules/figma-calculations/dist/webapi.js
+@@ -14,7 +14,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.FigmaAPIHelper = void 0;
+ const BASE_URL = "https://api.figma.com/v1";
++const axiosRetry = __importDefault(require("axios-retry"));
+ const axios_1 = __importDefault(require("axios"));
++
++axiosRetry.default(axios_1.default, {retries: 3, retryDelay: axiosRetry.exponentialDelay});
++
+ /**
+  * Static class used to call the REST API
+  */
+@@ -54,12 +58,15 @@ class FigmaAPIHelper {
+             return files;
+         });
+     }
+-    static getFile(fileKey) {
++    static getFile(fileKey, depth = 0) {
+         return __awaiter(this, void 0, void 0, function* () {
+             const resp = yield axios_1.default.get(`${BASE_URL}/files/${fileKey}`, {
+                 headers: {
+                     "X-FIGMA-TOKEN": FigmaAPIHelper.API_TOKEN,
+                 },
++                params: {
++                    depth: (depth > 0 ? depth : null)
++                }
+             });
+             const data = resp.data;
+             return data;

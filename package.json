@@ -1,0 +1,20 @@
+{
+  "scripts": {
+    "run": "node --enable-source-maps .build/index.js",
+    "build": ".config/build.sh",
+    "start": "typescript-language-server --stdio",
+    "postinstall": "patch-package"
+  },
+  "dependencies": {
+    "axios-retry": "^4.0.0",
+    "console.table": "^0.10.0",
+    "esbuild": "^0.19.10",
+    "figma-calculations": "^0.1.81-alpha",
+    "patch-package": "^8.0.0",
+    "typescript-language-server": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3"
+  }
+}
